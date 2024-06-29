@@ -1,0 +1,47 @@
+from sage.all import *
+from helpers import find_prime_base, modpow, invert_ext_gcd, find_smooth_powers
+
+def solveDLP(g, h, p, B):
+    """
+    Given prime p, g primitive root mod p, h in F_p, and hyperparamter B, use the index calculus method to solve the DLP:
+    g^x cong. h (mod p)
+    Outputs x in (0, p)
+    """
+
+    # STEP 1: Manually find the factor base of primes bounded by B
+    factor_base = find_prime_base(B)
+
+    # STEP 2: Take random powers of g modulo p and pick the ones that are B-smooth. 
+    # Try to get more than pi(B) numbers
+    pi_B = len(factor_base)
+    factorizations = []
+    while len(factorizations) <  pi_B + 1:
+        rand_pwr = randint(1, p-1)
+        factorization = find_smooth_powers(modpow(g, rand_pwr, p), factor_base)
+        if factorization != None:
+            factorizations.append(factorization + [rand_pwr])
+
+    # 'GF(p)' refers to the galois field over p 
+    A = Matrix(GF(p), factorizations)
+    R, pivots = A.rref()
+    print(A)
+    
+    # STEP 3: Convert these into linear equations with variables equal to the log_g(l) for l in the factor base 
+
+    
+
+
+
+
+    # STEP 4: Solve the congruencies modulo the prime factors of p - 1
+
+    # STEP 5: Lift the solutions modulo the powers of those factors 
+
+    # STEP 6: Combine the solutions using STRT
+
+    # STEP 7: Choose random values of k until we find a value of hg^{-k} that is B-smooth 
+
+    # STEP 8: Calculate the DLP by taking the linear combo of log_g(l)
+
+if __name__ == "__main__":
+    solveDLP(37, 211, 18443, 5)

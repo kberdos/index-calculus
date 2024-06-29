@@ -1,0 +1,234 @@
+\documentclass[]{math_paper}
+\usepackage[margin=0.5in]{geometry}
+
+\author{Kazuya Erdos}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{An Exploration of The Index Calculus}
+
+\begin{document}
+\maketitle
+\section{Introduction}
+A central idea to many cryptographic protocols is the utilization of \emph{trapdoor functions}, which are functions that are easy to compute in one direction, yet very difficult to invert. Perhaps the most ubiquitous trapdoor function in cryptography is discrete exponentiation: while it is very easy to compute $g^x \pmod p$ with methods such as binary fastpowering, computing the inverse, $\log_g(h)$, also known as taking the \emph{discrete logarithm}, is quite difficult. Over finite fields, known algorithms such as \emph{Baby Step Giant Step} run in exponential time \cite{Hoffstein2008}. For Elliptic Curves, this variant of algorithm is the best known for cracking the Discrete Log Problem (DLP), which allows Elliptic Curve-based cryptography to use shorter keys while maintaining the same security as their classical $\ff_p$-based counterparts.
+
+That begs the question, then, what algorithms exist to crack the DLP over $\ff_p$? In this short paper we will explore the \textbf{Index Calculus}, an algorithm that utilizes the nature of $B$-smooth numbers to break the DLP into smaller, more manageable problems. A discrete logarithm used to be called an \emph{index} \cite{Hoffstein2008}, and the process of working over many smaller discrete logarithms, or indices, gives the algorithm its name. The algorithm runs in subexponential time, a strong improvement over the best-known exponential algorithms for Elliptic Curves.
+\section{Background} \label{sec:background}
+We assume that the reader is familiar with group theory, modular arithmetic, and the Extended Euclidean Algorithm. Below are some essential definitions and theorems to understand Index Calculus.
+
+\begin{definition} ($B$-smooth) \cite{Hoffstein2008}. A number is whose prime factors are all less than or equal to $B$ is called a \emph{$B$-smooth} number.
+\end{definition}
+
+\begin{definition} (Prime counting function) \cite{Hoffstein2008}. For any number $X$, let
+    \[
+        \pi(X) = \text{(\# of primes $p$ satisfying $2 \leq p \leq X$)}
+    \]
+\end{definition}
+
+\begin{definition} (Square-free integers) \cite{Vogt}. An integer $n \in \zz$ is called \emph{square-free} if it is divisible by no square number other than $1$.
+
+\end{definition}
+
+\begin{theorem} (Sun Tzu Remainder Theorem) \label{thm:strt} \cite{Vogt}. If $\gcd(m_i. m_j)$ for $i \neq j$, then the system of congruencies
+    \begin{align*}
+        x \equiv b_1 & \pmod {m_1} \\
+        x \equiv b_2 & \pmod {m_2} \\
+                     & \vdots      \\
+        x \equiv b_l & \pmod {m_l}
+    \end{align*}
+    Has a unique solution modulo $m = m_1 \cdot m_2 \cdots m_l$
+\end{theorem}
+We give a proof and describe an algorithm to implement Theorem \ref{thm:strt} in section \ref{subsec:strt}. We can now move to our main result.
+\section{Mathematical Description of the Algorithm} \label{sec:mathalg}
+Now, we describe the algorithm. Suppose we'd like to solve the Discrete Log Problem
+\begin{equation}
+    g^x \equiv h \pmod p
+\end{equation}
+First, we fix a bound $B$ and randomly choose integer values for $k$ until we find an instance of the quantity
+\[
+    h \cdot g^{-k}
+\]
+that is $B$-smooth. For this value of $k$ we can write
+\begin{equation} \label{prod_l}
+    h \cdot g^{-k} \equiv \prod_{\ell \leq B}\ell^{e_\ell} \pmod p
+\end{equation}
+For every prime $\ell \geq B$ and for some exponents $e_\ell$. Taking the discrete logarithm base $g$ of both sides of (\ref{prod_l}) yields
+\begin{equation} \label{eq:finalsum}
+    \log_g(h) \equiv k + \sum_{\ell \leq B} e^\ell \cdot log_g(\ell) \pmod{p-1}
+\end{equation}
+Note that exponents in $(\zz/p\zz)^\times$ can be considered modulo $p-1$. Now, we must compute each discrete logs $log_g(\ell)$ for smaller primes $\ell$. To accomplish this, we randomly select exponents $i$ and compute
+\[
+    g_i = g^i \quad \% \quad p
+\]
+Until we find at least $\pi(B)$ instances of $g_i$ that are $B$-smooth. For each $g_i$ that is $B$-smooth we can write
+\[
+    g_i = g^i = \prod_{\ell \leq B} \ell^{u_\ell(i)}
+\]
+Again, we can take the discrete logarithm base $g$ of both sides to find
+\begin{equation} \label{eq_i}
+    i \equiv  \sum_{\ell \leq B}u_l(i) \cdot log_g(\ell) \pmod{p-1}
+\end{equation}
+This gives us a system of at least $\pi(B)$ equations with unknowns $\log_g(\ell)$. Note that since there are $\pi(B)$ values that $\ell$ can take on, it is essential for us to generate at least $\pi(B)$ equations. We can now solve this linear system to find each value of $\log_g(\ell)$. However, there is one small problem: Since $p-1$ is composite, we cannot use Gaussian elimination to solve the system modulo $p-1$. Instead, we must factor $p-1 = q_1^{e_1} \cdots q_n^{e_n}$ and solve the system for each prime factor $q_j$.
+\begin{remark} \label{rmk:lift}
+    For this implemention, we make the simplifying assumption that each $e_j = 1$, meaning that $p-1$ is square-free. To remove this assumption from our implementation, we would need to lift ecah of our solutions from $\zz/q_j\zz$ to $\zz/q_j^{e_j}\zz$, though this was determined to be out of scope. \cite{Hoffstein2008}
+\end{remark}
+Finally, we combine all of the solutions modulo the relatively prime bases $q_j$ to generate a single solution modulo $p-1$ via the Sun Tzu Remainder Theorem algorithm described in \ref{subsec:strt}. After finding each of our values of $log_g(\ell)$, we plug them into (\ref{eq:finalsum}) with value of $k$ we chose to find $\log_g(h)$, and the algorithm is complete.
+\section{Implementation of the Algorithm} \label{sec:csalg}
+The full algorithm was implemented in Python, with Sagemath being used for Gaussian elimination. Some of the steps were chosen to be optimized, while others were implemented naively. The intention of this was to get a working implementation of the algorithm as a baseline, then adding optimizations on top. This section serves to break down some of the interesting implementation details.
+\subsection{High-level Pseudocode} \label{subsec:pseudocode}
+Here is a very high-level overview of the implementation. For complete details, please see the provided code.
+\begin{algorithm}[H]
+    \begin{algorithmic}[1]
+        \Require $g$: DLP base, $h$: power of $g$, $p$: large prime, $B$: bound
+        \Function{solveDLP}{$g, h, p, B$}
+        \State Find all primes $\ell \leq B$
+        \State Generate $\pi(B)$ random powers $g^i$ that are $B$-smooth
+        \State Factor $p-1$ into $q_1^{e_1} \cdots q_n^{e_n}$
+        \If{$e_i > 1$}
+        \State \Return Exception
+        \EndIf
+        \State $success \gets False$
+        \While{$success == False$}
+        \State $aug \gets \text{Augmented matrix from random powers}$
+        \State $R \gets rref(aug)$
+        \State $system\_solns \gets \text{solutions from }R$
+        \If{$system\_solns$ not unique}
+        \State Retry with new random powers
+        \Else
+        \State $success \gets True$
+        \EndIf
+        \EndWhile
+        \State $\log_g(\ell) \gets \text{Solved STRT system}$
+        \While{$True$}
+        \State $k \gets randint(1, p-1)$
+        \If{$hg^{-k}$ is $B$-smooth}
+        \State $pows \gets$ powers of prime factors of $hg^{-k}$
+        \State \Return $k + \text{linear combination of $pows \cdot \log_g(\ell)$}$
+        \EndIf
+        \EndWhile
+        \EndFunction
+    \end{algorithmic}
+\end{algorithm}
+\subsection{Finding and facotring B-smooth numbers} \label{subsec:b-smooth}
+
+A crucial part of the Index Calculus algorithm is determining whether a number $n$ is $B$-smooth. Additionally, we must also express
+\[
+    n = \prod_{\ell \leq B}\ell^{e_\ell}
+\]
+To find all of the primes $\ell \leq B$, we use the classic Sieve of Eratosthenes:
+\begin{lstlisting}
+    def find_prime_base(B):
+        primes = [True for i in range(B + 1)]
+        p = 2
+        while (p ** 2 <= B):
+            if primes[p]: 
+                for i in range (p ** 2, B + 1, p):
+                    primes[i] = False
+            p += 1
+        output_primes = []
+        for p in range(2, B + 1):
+            if(primes[p]):
+                output_primes.append(p)
+        return output_primes
+\end{lstlisting}
+With this power base of $\ell \leq B$, we can determine whether a number is $B$-smooth:
+\begin{lstlisting}
+    def find_smooth_powers(n, factor_base):
+        output = []
+        for b in factor_base:
+            power = 0
+            while n % b == 0:
+                power += 1
+                n = n // b
+            output.append(power)
+        if n == 1: 
+            return output
+        else:
+            return None
+\end{lstlisting}
+The idea of the algoritihm is to iterate through the factor base (previously referred to as the \emph{prime base}) and pull off as many powers of each prime from $n$ as possible, then see if the resulting quotient is $1$ after completion. If so, then $n$ is $B$-smooth and we can return the factorization, otherwise we return None.
+\subsection{Sun Tzu Remainder Theorem} \label{subsec:strt}
+Conveniently, the proof of the Sun Tzu Remainder Theorem gives us a very natural way to implement it with code. We provide a high-level proof here:
+\begin{proof}[Proof of Theorem \ref{thm:strt}] \cite{Vogt}
+    From the given system of congruencies, we let $m = m_1 \cdots m_l$, and set $n_i = \frac{m}{m_i}$ for all $i$. Notice that $\gcd(n_i, m_i) = 1$ and $\gcd{n_i, m_j} = m_j$ if $j \neq i$. By the Extended Euclidean Algorith, $\exists r_i, s_i \in \zz$ such that $r_i m_i + n_i s_i = 1$. Set $e_i = n_is_i$. Observe that $e_i \equiv 1 \pmod{m_i}$ and $e_i \equiv 0 \pmod{m_j}$. So, to satisfy all of the congruencies, we set our unique solution to
+    \[
+        x \equiv \sum_{i=1}^lb_ie_i \pmod m
+    \]
+\end{proof}
+This leads to a very natural programming implementation:
+\begin{lstlisting}
+    def solve_single_strt(m, strt_in):
+        soln = 0
+        for m_i, b_i in strt_in:
+            n_i = m // m_i
+            _, s_i = ext_gcd(m_i, n_i)
+            e_i = n_i * s_i
+            soln += b_i * e_i
+        return soln % m
+\end{lstlisting}
+\subsection{Solving Linear Systems with Sagemath} \label{subsec:linear}
+We utilized Sagemath to solve the linear systems described in the algorithm:
+\begin{lstlisting}
+    prime_factorization = prime_factor(p - 1)
+    sun_tzu_consts = []
+    for q_i, e_i in prime_factorization:
+        # NOTE: Simplifying assumption that p-1 is square-free
+        if e_i > 1: raise Exception("Out of scope: p-1 is not square-free")
+        coeffs_matrix = Matrix(GF(q_i), coefficients)
+        consts_matrix = vector(GF(q_i), powers_i)
+        aug = coeffs_matrix.augment(consts_matrix)
+        R = aug.rref()
+        system_solns = []
+        for i in range(pi_B):
+            if R[i, i] != 1: # Extract from pivot rows
+                continue
+            system_solns.append(R[i, pi_B])
+        sun_tzu_consts.append((q_i, system_solns))
+    sun_tzu_solved = solve_strt_system(sun_tzu_consts, pi_B)
+
+\end{lstlisting}
+The strategy is as follows: We iterate through the prime factors of $p-1$, raising an exception if our assumption of $p-1$ being square-free is violated. Then, we construct an augmented matrix modulo $\ff_{q_i}$ of the coefficients and constants found in equation \ref{eq_i}. We solve them by Gaussian Reduction through Sagemath's \textbf{rref()} function, then combine the solutions with the Sun Tzu Remainder Theorem algorithm described in \ref{subsec:strt}.
+\begin{remark} \label{rmk:lindep}
+    It is possible for the system generated to not have unique solutions, due to linear dependence between rows of the augmented matrix. The full version of the code implementation checks for this case, and naively retries with new randomly generated powers. An optimization of this would be to ensure that the system is solvable as it is being generated.
+\end{remark}
+
+
+\section{Short Discussion on Runtime} \label{sec:runtime}
+As seen earlier, our implementation is not fully optimized, but it does meet the \textbf{subexponential} runtime expectations of the Index Calculus. The main bottleneck is finding $\pi(B)$ powers $g^i \pmod p$ that are $B$-smooth. As we use a sieve method to quickly check if numbers are $B$-smooth, from \cite{Hoffstein2008} we can estimate that our running time is on the order of
+\[
+    e^{\sqrt{2(\ln p)(\ln \ln p)}}
+\]
+
+\section{Running and testing the code} \label{sec:example}
+The program was developed and tested locally on a device running an Apple ARM processor. The following tools were used:
+\begin{enumerate}
+    \item \textbf{python 3.12.0}, installed from \cite{Python}
+    \item \textbf{sage 10.3}, installed from Homebrew, a MacOS package manager \cite{Homebrew}
+    \item \textbf{unittest}, which is included as a part of Python
+\end{enumerate}
+Three files exist as part of the program: \textbf{index\_calc.py} for the main functionality, \textbf{helpers.py} for support functions, and \textbf{test\_index\_calc.py} for testing. Each of these files imports sage as follows:
+\begin{lstlisting}
+    from sage.all import *
+\end{lstlisting}
+The main \textbf{index\_calc.py} file can be run directly with the sage binary from the command line. This prompts the user to enter values for $g$, $h$, $p$, and $B$, and solves the DLP with Index Calculus (if possible):
+\begin{lstlisting}
+    sage index_calc.py
+\end{lstlisting}
+We use the Python \textbf{unittest} library for testing. To run tests, you must first enter the Sagemath shell to gain access to all of its modules:
+\begin{lstlisting}
+    sage -sh
+\end{lstlisting}
+Once inside of the shell, we can run all tests:
+\begin{lstlisting}
+    python3 -m unittest test_index_calc.UnitTests
+\end{lstlisting}
+or a single test:
+\begin{lstlisting}
+    python3 -m unittest test_index_calc.UnitTests.test_textbook
+\end{lstlisting}
+
+
+\bibliographystyle{abbrv}
+\bibliography{refs}
+\appendix
+\end{document}
